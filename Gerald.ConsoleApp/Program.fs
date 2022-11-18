@@ -6,6 +6,9 @@ open Gerald.ConsoleApp.Parser
 let stringJoin (sep: string) (lst: IEnumerable<'a>) = String.Join(sep, lst)
 
 let asmProgram = stringJoin "\n" [
+    "[data]{";
+    "  !     ^FavFood: DE,AD,BE,EF";
+    "\n  } ";
     "[program] {";
     "adc X";
     "sbc X";
@@ -16,7 +19,7 @@ let asmProgram = stringJoin "\n" [
     " sbc X";
     "  cpx X";
     " cpy X  ";
-    " jmp    FreshPrince ";
+    " jmp    FreshPrince  ";
     "! comment";
     "!comment1";
     "!adc X";
@@ -34,19 +37,21 @@ let asmProgram = stringJoin "\n" [
     "JMP WestPhilly  ⍝ going to where I was born and raised";
     "⍝^EasyPhilly:  ⍝ not born and raised";
     "⍝JMP EastPhilly  ⍝ not going to where I was not born and raised";
-    "}  "
+    "\n}  "
 ]
 
-let dumpSect (s: Section): unit =
-    match s with
-    | DataSection xs -> printfn "Data section:"; for x in xs do printfn $"  %A{x}"
-    | ProgramSection xs -> printfn "Program section:"; for x in xs do printfn $"  %A{x}"
+let dumpPgm (pgm: AsmProgram): unit =
+    match pgm.data with
+    | None -> printfn "No data section"
+    | Some d -> printfn "Data section:"; for x in d do printfn $"  %A{x}"
+    
+    printfn "Program section:"; for x in pgm.program do printfn $"  %A{x}"
 
 [<EntryPoint>]
 let main argv =
     let res = runParser asmProgram
     match res with
-    | Success(ss, _, _) -> for s in ss do dumpSect s
+    | Success(p, _, _) -> dumpPgm p
     | x -> printfn $"%A{x}"
     0
     

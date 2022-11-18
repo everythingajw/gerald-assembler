@@ -5,6 +5,14 @@
         <TargetFramework>net6.0</TargetFramework>
     </PropertyGroup>
 
+    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+      <WarningLevel>4</WarningLevel>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+      <WarningLevel>4</WarningLevel>
+    </PropertyGroup>
+
     <ItemGroup>
         <Compile Include="Parser.fs" />
         <Compile Include="Program.fs" />

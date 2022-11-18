@@ -1,5 +1,6 @@
 module Gerald.ConsoleApp.Parser
 
+open System
 open FParsec
 
 (*
@@ -55,16 +56,20 @@ type Instruction = Nop
 
 type AsmLine = LabelLine of TLabel
              | InstructionLine of Instruction
-             
-type Section = ProgramSection of AsmLine list
-             | DataSection of AsmLine list
+
+type ProgramSection = AsmLine list
+
+type DataLine = Bytes of (TLabel * byte list)
+
+type DataSection = DataLine list 
+
+type AsmProgram = { data: DataSection option; program: ProgramSection }
 
 let private caseSensitive = false
 
-let private pStringC =
-    if caseSensitive
-    then pstring
-    else pstringCI
+let private pStringC = if caseSensitive then pstring else pstringCI
+    
+let private skipStringC = if caseSensitive then skipString else skipStringCI
 
 let private commentChars =
     ["⍝"; "!"]
@@ -83,9 +88,11 @@ let private pRegister =
     |> List.map (fun t -> pStringC (fst t) >>% (snd t))
     |> choice
 
-let private pLabel = regex "[a-zA-Z_][a-zA-Z0-9_]*" |>> TLabel.Label
+let private pLabelName = regex "[a-zA-Z_][a-zA-Z0-9_]*" |>> TLabel.Label
 
-let private pLabelLine = pStringC "^" >>. pLabel .>> pStringC ":" |>> LabelLine
+let private pLabel = pStringC "^" >>. pLabelName .>> pStringC ":"
+
+let private pLabelLine = pLabel |>> LabelLine
 
 let private pNoArgInstruction =
      [("nop", Nop); ("tax", Tax);
@@ -110,14 +117,14 @@ let private pOneArgRegisterInstr =
 let private pInstruction =
     pNoArgInstruction
     <|> pOneArgRegisterInstr
-    <|> (pOneArgInstr pLabel [("jmp", Jmp)])
+    <|> (pOneArgInstr pLabelName [("jmp", Jmp)])
     
 let private pInstructionLine = pInstruction |>> InstructionLine
 
-let private pLine =
-    let meaningful = (pInstructionLine <|> pLabelLine) |>> Some
-    let notMeaningful = pCommentLine >>% None
-    many ws >>. (meaningful <|> notMeaningful) .>> many ws .>> (optional pCommentLine)
+let private pOneLine contentParser =
+    skipMany ws >>. ((contentParser |>> Some) <|> (pCommentLine >>% None)) .>> skipMany ws .>> (optional pCommentLine) .>> skipMany newline 
+
+let private pAsmLine = pInstructionLine <|> pLabelLine |> pOneLine
 
 let private catOption (opt: 'a option) =
     match opt with
@@ -129,18 +136,44 @@ let private flatten (lst: 'a list list): 'a list = List.fold (@) [] lst
 /// Applies mapper then flattens the list.
 let private flatMap mapper = List.map mapper >> flatten 
 
-let private pSectionCode = (sepEndBy1 pLine newline) |>> flatMap catOption 
-
-let private betweenStrings start finish = between (pStringC start) (pStringC finish)
+// let private pSectionCode = (sepEndBy1 pAsmLine newline) |>> flatMap catOption 
+let private pSectionCode = (many1 pAsmLine) |>> flatMap catOption 
 
 let private pSectionHeader header =
-    many wsLine >>. between (pStringC "[") (pStringC "]") (pStringC header) .>> many wsLine
+    skipMany wsLine >>. between (skipStringC "[") (skipStringC "]") (pStringC header) .>> skipMany wsLine
 
-let private pProgramSection =
-    pSectionHeader "program"
-    >>. between (pStringC "{" .>> (many wsLine)) ((many ws) >>. pStringC "}") pSectionCode
-    |>> ProgramSection
+let private pBlock blockParser =
+    let optionalWs = skipMany wsLine //|> optional
+    let skipWs p = optionalWs >>. p .>> optionalWs .>> optional pCommentLine
+    let blockStart = pStringC "{" |> skipWs
+    let blockEnd = pStringC "}" |> skipWs
+    between blockStart blockEnd blockParser
 
-let private pProgram = pProgramSection |>> List.singleton
+let toUpper (s: string) = s.ToUpper()
+
+let toLower (s: string) = s.ToUpper()
+
+let hexToUint8 (s: string) = Convert.ToByte(s, 16)
+
+// let private pOneByte = skipMany ws >>. regex "[0-9a-fA-F]{1,2}" .>> skipMany ws |>> hexToUint8
+
+let private pOneByte =
+    let helper = manyMinMaxSatisfy 1 2 isHex
+    skipMany ws >>. helper .>> skipMany ws |>> hexToUint8
+
+let private pByteData = sepBy1 pOneByte (pStringC ",")
+
+let private pDataLine = pLabel .>>. pByteData |>> Bytes |> pOneLine
+
+// let private pDataCode = (sepEndBy pDataLine newline) |>> flatMap catOption
+let private pDataCode = (many pDataLine) |>> flatMap catOption
+
+let private pDataSection = (pSectionHeader "data") >>. (pBlock pDataCode)
+
+let private pProgramSection = (pSectionHeader "program") >>. (pBlock pSectionCode)
+
+let private pProgram = 
+    (opt pDataSection) .>>. pProgramSection .>> (optional eof)
+    |>> (fun (d, p) -> { data = d; program = p })
 
 let runParser = run pProgram
