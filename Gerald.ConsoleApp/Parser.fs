@@ -38,7 +38,7 @@ data AsmProgram = Program [AsmLine]
                   
 type Register = InstructionPointer | StackPointer | Accumulator | RegX | RegY
 
-type TLabel = Label of string
+type TLabel = Label of string // override t.ToString() = (match t with | Label x -> $"%s{x}")
 
 type Instruction = Nop 
                  | Adc of Register
@@ -55,18 +55,28 @@ type Instruction = Nop
 
 type AsmLine = LabelLine of TLabel
              | InstructionLine of Instruction
+             
+type Section = ProgramSection of AsmLine list
+             | DataSection of AsmLine list
 
 let private caseSensitive = false
 
-let private pStringC = if caseSensitive then pstring else pstringCI
+let private pStringC =
+    if caseSensitive
+    then pstring
+    else pstringCI
 
-let private commentChars = ["⍝"]
+let private commentChars =
+    ["⍝"; "!"]
+    |> List.sortByDescending String.length
 
 let private pCommentChar = List.map pStringC commentChars |> choice
 
 let private pCommentLine = pCommentChar >>. skipRestOfLine false 
 
-let private ws = (pchar ' ')
+let private ws = (pchar ' ') <|> tab
+
+let private wsLine = ws <|> newline
 
 let private pRegister =
     [("X", RegX); ("Y", RegY); ("A", Accumulator); ("S", StackPointer); ("P", InstructionPointer)]
@@ -84,26 +94,30 @@ let private pNoArgInstruction =
       ("dec", Dec)]
      |> List.map (fun (s, c) -> (pStringC s) >>. (many ws) >>% c)
      |> choice
-    
-let private pOneArgRegisterInstr =
-    [("adc", pRegister, Adc);
-     ("sbc", pRegister, Sbc);
-     ("cpx", pRegister, Cpx);
-     ("cpy", pRegister, Cpy)]
-    |> List.map (fun (s, p, c) -> (pStringC s) >>. (many1 ws) >>. p |>> c)
+
+let pOneArgInstr conv instrMap =
+    instrMap
+    |> List.map (fun (s, c) -> (pStringC s) >>. (many1 ws) >>. conv |>> c)
     |> choice
+
+let private pOneArgRegisterInstr =
+    [("adc", Adc);
+     ("sbc", Sbc);
+     ("cpx", Cpx);
+     ("cpy", Cpy)]
+    |> pOneArgInstr pRegister
 
 let private pInstruction =
     pNoArgInstruction
     <|> pOneArgRegisterInstr
-    <|> ((pStringC "jmp") >>. (many1 ws) >>. pLabel |>> Jmp)
+    <|> (pOneArgInstr pLabel [("jmp", Jmp)])
     
 let private pInstructionLine = pInstruction |>> InstructionLine
 
 let private pLine =
-    let meaningful = pInstructionLine <|> pLabelLine |>> Some
+    let meaningful = (pInstructionLine <|> pLabelLine) |>> Some
     let notMeaningful = pCommentLine >>% None
-    many ws >>. (meaningful <|> notMeaningful) .>> many ws
+    many ws >>. (meaningful <|> notMeaningful) .>> many ws .>> (optional pCommentLine)
 
 let private catOption (opt: 'a option) =
     match opt with
@@ -115,6 +129,18 @@ let private flatten (lst: 'a list list): 'a list = List.fold (@) [] lst
 /// Applies mapper then flattens the list.
 let private flatMap mapper = List.map mapper >> flatten 
 
-let private pProgram = sepEndBy1 pLine newline |>> flatMap catOption 
+let private pSectionCode = (sepEndBy1 pLine newline) |>> flatMap catOption 
 
-let runParser = run pProgram 
+let private betweenStrings start finish = between (pStringC start) (pStringC finish)
+
+let private pSectionHeader header =
+    many wsLine >>. between (pStringC "[") (pStringC "]") (pStringC header) .>> many wsLine
+
+let private pProgramSection =
+    pSectionHeader "program"
+    >>. between (pStringC "{" .>> (many wsLine)) ((many ws) >>. pStringC "}") pSectionCode
+    |>> ProgramSection
+
+let private pProgram = pProgramSection |>> List.singleton
+
+let runParser = run pProgram
