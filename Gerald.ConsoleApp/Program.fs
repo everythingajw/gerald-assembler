@@ -7,6 +7,8 @@ let stringJoin (sep: string) (lst: IEnumerable<'a>) = String.Join(sep, lst)
 
 let asmProgram = stringJoin "\n" [
     "[data]{";
+    //"  !     ^FavFood: DE,AD,BE,EF";
+    "       ^FavFood: DE,AD,BE,EF";
     "  !     ^FavFood: DE,AD,BE,EF";
     "\n  } ";
     "[program] {";
@@ -37,7 +39,7 @@ let asmProgram = stringJoin "\n" [
     "JMP WestPhilly  ⍝ going to where I was born and raised";
     "⍝^EasyPhilly:  ⍝ not born and raised";
     "⍝JMP EastPhilly  ⍝ not going to where I was not born and raised";
-    "\n}  "
+    "\n        }  "
 ]
 
 let dumpPgm (pgm: AsmProgram): unit =

@@ -122,7 +122,7 @@ let private pInstruction =
 let private pInstructionLine = pInstruction |>> InstructionLine
 
 let private pOneLine contentParser =
-    skipMany ws >>. ((contentParser |>> Some) <|> (pCommentLine >>% None)) .>> skipMany ws .>> (optional pCommentLine) .>> skipMany newline 
+    spaces >>. ((contentParser |>> Some) <|> (pCommentLine >>% None)) .>> spaces .>> (optional pCommentLine) .>> spaces
 
 let private pAsmLine = pInstructionLine <|> pLabelLine |> pOneLine
 
@@ -166,7 +166,7 @@ let private pByteData = sepBy1 pOneByte (pStringC ",")
 let private pDataLine = pLabel .>>. pByteData |>> Bytes |> pOneLine
 
 // let private pDataCode = (sepEndBy pDataLine newline) |>> flatMap catOption
-let private pDataCode = (many pDataLine) |>> flatMap catOption
+let private pDataCode = (sepBy pDataLine newline) |>> flatMap catOption
 
 let private pDataSection = (pSectionHeader "data") >>. (pBlock pDataCode)
 
