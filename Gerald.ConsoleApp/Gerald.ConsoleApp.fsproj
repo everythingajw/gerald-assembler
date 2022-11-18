@@ -14,6 +14,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Compile Include="Utils.fs" />
         <Compile Include="Parser.fs" />
         <Compile Include="Assembler.fs" />
         <Compile Include="Program.fs" />

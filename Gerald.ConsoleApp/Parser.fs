@@ -1,5 +1,6 @@
 module Gerald.ConsoleApp.Parser
 
+open Gerald.ConsoleApp.Utils
 open System
 open FParsec
 
@@ -126,17 +127,6 @@ let private pOneLine contentParser =
 
 let private pAsmLine = pInstructionLine <|> pLabelLine |> pOneLine
 
-let private catOption (opt: 'a option) =
-    match opt with
-    | Some x -> [x]
-    | None -> []
-
-let private flatten (lst: 'a list list): 'a list = List.fold (@) [] lst
-
-/// Applies mapper then flattens the list.
-let private flatMap mapper = List.map mapper >> flatten 
-
-// let private pSectionCode = (sepEndBy1 pAsmLine newline) |>> flatMap catOption 
 let private pSectionCode = (many1 pAsmLine) |>> flatMap catOption 
 
 let private pSectionHeader header =
@@ -148,12 +138,6 @@ let private pBlock blockParser =
     let blockStart = pStringC "{" |> skipWs
     let blockEnd = pStringC "}" |> skipWs
     between blockStart blockEnd blockParser
-
-let toUpper (s: string) = s.ToUpper()
-
-let toLower (s: string) = s.ToUpper()
-
-let hexToUint8 (s: string) = Convert.ToByte(s, 16)
 
 // let private pOneByte = skipMany ws >>. regex "[0-9a-fA-F]{1,2}" .>> skipMany ws |>> hexToUint8
 
