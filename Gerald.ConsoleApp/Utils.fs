@@ -10,6 +10,10 @@ let hexToUint8 (s: string) = Convert.ToByte(s, 16)
 
 let hexToUint16 (s: string) = Convert.ToUInt16(s, 16)
 
+let flip f a b = f b a
+
+let (>>||) (f1: 'a -> bool) (f2: 'a -> bool) (c: 'a): bool = f1 c || f2 c  
+
 let catOption (opt: 'a option) =
     match opt with
     | Some x -> [x]
