@@ -6,14 +6,14 @@ open FParsec
 
 type Register = InstructionPointer | StackPointer | Accumulator | RegX | RegY
 
-type TLabel = Label of string // override t.ToString() = (match t with | Label x -> $"%s{x}")
+type TLabel = Label of string
 
 type Argument = Absolute of uint16
-              | Immediate of uint8
+              | Immediate of uint16
               | Reg of Register
-              | ZeroPage of uint8
-              | ZeroPageOffsetX of uint8
-              | ZeroPageOffsetY of uint8
+              | ZeroPage of uint16
+              | ZeroPageOffsetX of uint16
+              | ZeroPageOffsetY of uint16
 
 type Instruction = Nop 
                  | Adc of Argument
@@ -33,15 +33,15 @@ type Instruction = Nop
                  | Inc
                  | Dec
                  | Jmp of TLabel
-                 | Jsr of TLabel
-                 | Rts
+                 
+// type TDirective =
 
 type AsmLine = LabelLine of TLabel
              | InstructionLine of Instruction
 
-type ProgramSection = AsmLine list
+type ProgramSection = { start: uint16; program: AsmLine list }
 
-type DataLine = Bytes of (TLabel * byte list)
+type DataLine = Bytes of (TLabel * uint8 list)
 
 type DataSection = DataLine list 
 
@@ -64,7 +64,7 @@ let private registerNames =
 
 let private instructionStrings =
     ["nop"; "adc"; "sbc"; "cmp"; "cpx"; "cpy"; "pha"; "pla"; "tax"; "tay"; "txa"; "tya";
-     "sta"; "stx"; "sty"; "inc"; "dec"; "jmp"; "jsr"; "rts";]
+     "sta"; "stx"; "sty"; "inc"; "dec"; "jmp"]
     |> Set.ofList
 
 let private reservedNames = List.fold Set.union Set.empty [registerNames; instructionStrings]
@@ -119,11 +119,11 @@ let private pUint16 = pNumber "0x" 4 hexToUint16
 let private pArgument =
     // Order is important because of maximal munch
     (pRegister |>> Argument.Reg)
-    <|> (pStringC "#" >>. puint8 |>> Immediate)
+    <|> (pStringC "#" >>. puint16 |>> Immediate)
     <|> (puint16 |>> Absolute)
-    <|> (puint8 .>> pRegisterX |>> ZeroPageOffsetX)
-    <|> (puint8 .>> pRegisterY |>> ZeroPageOffsetY)
-    <|> (puint8 |>> ZeroPage)
+    <|> (puint16 .>> pRegisterX |>> ZeroPageOffsetX)
+    <|> (puint16 .>> pRegisterY |>> ZeroPageOffsetY)
+    <|> (puint16 |>> ZeroPage)
 
 // let private pLabelName = regex "[a-zA-Z_][a-zA-Z0-9_]*" |>> TLabel.Label
 
@@ -146,7 +146,7 @@ let private pNoArgInstruction =
       ("tay", Tay); ("txa", Txa);
       ("tya", Tya); ("inc", Inc);
       ("dec", Dec); ("pha", Pha);
-      ("pla", Pla); ("rts", Rts)]
+      ("pla", Pla)]
      |> List.map (fun (s, c) -> (pStringC s) >>. (many ws) >>% c)
      |> choice
 
@@ -165,7 +165,7 @@ let private pOneArgRegisterInstr =
 let private pInstruction =
     pNoArgInstruction
     <|> pOneArgRegisterInstr
-    <|> (pOneArgInstr pLabelName [("jmp", Jmp); ("jsr", Jsr)])
+    <|> (pOneArgInstr pLabelName [("jmp", Jmp)])
     
 let private pInstructionLine = pInstruction |>> InstructionLine
 
@@ -197,6 +197,7 @@ let private pByteData = sepBy1 pOneByte (pStringC ",")
 let private pDataLine = pLabel .>>. pByteData |>> Bytes |> pOneLine
 
 // let private pDataCode = (sepEndBy pDataLine newline) |>> flatMap catOption
+
 let private pDataCode = (sepBy pDataLine newline) |>> flatMap catOption
 
 let private pDataSection = (pSectionHeader "data") >>. (pBlock pDataCode)
@@ -205,6 +206,6 @@ let private pProgramSection = (pSectionHeader "program") >>. (pBlock pSectionCod
 
 let private pProgram = 
     (opt pDataSection) .>>. pProgramSection .>> (optional eof)
-    |>> (fun (d, p) -> { data = d; program = p })
+    |>> (fun (d, p) -> { data = d; program = { start = ~~~0us;  program = p } })
 
 let runParser = run pProgram

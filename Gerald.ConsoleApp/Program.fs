@@ -47,10 +47,12 @@ let dumpPgm (pgm: AsmProgram): unit =
     | None -> printfn "No data section"
     | Some d -> printfn "Data section:"; for x in d do printfn $"  %A{x}"
     
-    printfn "Program section:"; for x in pgm.program do printfn $"  %A{x}"
+    printfn "Program section:"; for x in pgm.program.program do printfn $"  %A{x}"
 
 [<EntryPoint>]
 let main argv =
+    printfn $"%s{asmProgram}"
+    
     let res = runParser asmProgram
     match res with
     | Success(p, _, _) -> dumpPgm p
