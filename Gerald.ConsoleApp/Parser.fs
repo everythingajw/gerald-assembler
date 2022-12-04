@@ -14,12 +14,13 @@ let LinkRegister = X 31uy
 
 type TLabel = Label of string
 
-type Argument = Immediate of uint8
+type Argument = Immediate of uint16
               | Reg of Register
 
 type Instruction = Nop
                  | Add of (Register * Register * Argument)
                  | Sub of (Register * Register * Argument)
+                 | And of (Register * Register * Argument)
                  | Orr of (Register * Register * Argument)
                  | Xor of (Register * Register * Argument)
                  | Jmp of TLabel
@@ -39,6 +40,8 @@ type AsmProgram = { data: DataSection option; program: ProgramSection }
 
 let instructionSizeBytes = 4
 
+let maxImmediate: uint16 = uint16 (1 <<< 14) - 1us
+
 let private caseSensitive = false
 
 let private registerToString reg =
@@ -52,7 +55,7 @@ let private registerNames =
     |> Set.ofList
 
 let private instructionStrings =
-    ["nop"; "add"; "sub"; "orr"; "xor"; "jmp"]
+    ["nop"; "add"; "sub"; "and"; "orr"; "xor"; "jmp"]
     |> Set.ofList
 
 let private reservedNames = List.fold Set.union Set.empty [registerNames; instructionStrings]
@@ -86,15 +89,17 @@ let private pRegister =
     let xPrefix =
         pStringC "X"
         >>. manyMinMaxSatisfy 1 2 isDigit
-        >>. puint8
+        |>> uint8
         >>= (fun x -> if x < 0uy || x > 31uy
                       then fail $"Invalid register X%d{x}"
                       else preturn (X x))
     let special = oneOfMultipleStrings [("XZR", ZeroRegister); ("SP", StackPointer); ("LR", LinkRegister)]
 
-    (xPrefix <|> special)
+    (special <|> xPrefix)
 
-let pImmediate = pStringC "#" >>. puint8 |>> Immediate
+let pImmediate = pStringC "#" >>. puint16 >>= (fun n -> if n < 0us || n > maxImmediate
+                                                        then fail $"Immediate %d{n} is too large"
+                                                        else Immediate n |> preturn)
 
 let pArgument = (pRegister |>> Reg) <|> pImmediate
 
@@ -113,7 +118,7 @@ let p3ArgInstruction =
         
         pStringC name >>. skipMany1 ws >>. args |>> mapper
     
-    [("add", Add); ("sub", Sub); ("orr", Orr); ("xor", Xor)]
+    [("add", Add); ("sub", Sub); ("and", And); ("orr", Orr); ("xor", Xor)]
     |> List.map (fun t -> pInstr (fst t) (snd t))
     |> choice
 
@@ -159,7 +164,7 @@ let private pOneByte =
 
 let private pByteData = sepBy1 pOneByte (pStringC ",")
 
-let private pDataLine = pLabel .>>. pByteData |>> Bytes |> pOneLine
+let private pDataLine = (pLabel .>> pStringC ":") .>>. pByteData |>> Bytes |> pOneLine
 
 let private pDataCode = (sepBy pDataLine newline) |>> flatMap catOption
 
