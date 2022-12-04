@@ -2,6 +2,7 @@
 open System.Collections.Generic
 open FParsec.CharParsers
 open Gerald.ConsoleApp.Parser
+open Gerald.ConsoleApp.Assembler
 
 let stringJoin (sep: string) (lst: IEnumerable<'a>) = String.Join(sep, lst)
 
@@ -9,6 +10,8 @@ let asmProgram = stringJoin "\n" [
     "[data]{"
     //"  !     ^FavFood: DE,AD,BE,EF"
     "       ^FavFood: DE,AD,BE,EF"
+    "       ^FavFood2: DE,AD,BE,EF"
+    "       ^FavFood3: DE,AD,BE,EF"
     "  !     ^FavFood: DE,AD,BE,EF"
     "\n  } "
     "[program] {"
@@ -47,7 +50,10 @@ let main argv =
     
     let res = runParser asmProgram
     match res with
-    | Success(p, _, _) -> dumpPgm p
+    | Success(p, _, _) ->
+        dumpPgm p
+        let dslbls = computeDataSectionLabels p.data.Value
+        printfn $"%A{dslbls}"
     | x -> printfn $"%A{x}"
     0
     
