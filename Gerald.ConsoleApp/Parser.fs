@@ -4,6 +4,10 @@ open Gerald.ConsoleApp.Utils
 open System
 open FParsec
 
+type RomAddress = uint32
+
+type RamAddress = uint32
+
 type Register = X of uint8
 
 let ZeroRegister = X 29uy
