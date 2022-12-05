@@ -14,6 +14,8 @@ let flip f a b = f b a
 
 let (>>||) (f1: 'a -> bool) (f2: 'a -> bool) (c: 'a): bool = f1 c || f2 c  
 
+let prepend elem lst = elem::lst
+
 let catOption (opt: 'a option) =
     match opt with
     | Some x -> [x]

@@ -10,16 +10,23 @@ type RamAddress = uint32
 
 type Register = X of uint8
 
-let ZeroRegister = X 29uy
+let ZeroRegisterNumber = 29uy
 
-let StackPointer = X 30uy
+let ZeroRegister = X ZeroRegisterNumber
 
-let LinkRegister = X 31uy
+let StackPointerNumber = 30uy
 
-type TLabel = Label of string
+let StackPointer = X StackPointerNumber
+
+let LinkRegisterNumber = 31uy
+
+let LinkRegister = X LinkRegisterNumber
+
+type TLabel = string
 
 type Argument = Immediate of uint16
               | Reg of Register
+              | Label of TLabel
 
 type Instruction = Nop
                  | Add of (Register * Register * Argument)
@@ -27,22 +34,22 @@ type Instruction = Nop
                  | And of (Register * Register * Argument)
                  | Orr of (Register * Register * Argument)
                  | Xor of (Register * Register * Argument)
-                 | Jmp of TLabel
+                 | Jmp of Argument
                  
 // type TDirective =
 
-type AsmLine = LabelLine of TLabel
+type AsmLine = LabelLine of string
              | InstructionLine of Instruction
 
 type ProgramSection = { start: uint16; program: AsmLine list }
 
-type DataLine = Bytes of (TLabel * uint8 list)
+type DataLine = Bytes of (string * uint8 list)
 
 type DataSection = DataLine list 
 
 type AsmProgram = { data: DataSection option; program: ProgramSection }
 
-let instructionSizeBytes = 4
+let instructionSizeBytes = 4u
 
 let maxImmediate: uint16 = uint16 (1 <<< 14) - 1us
 
@@ -105,7 +112,17 @@ let pImmediate = pStringC "#" >>. puint16 >>= (fun n -> if n < 0us || n > maxImm
                                                         then fail $"Immediate %d{n} is too large"
                                                         else Immediate n |> preturn)
 
-let pArgument = (pRegister |>> Reg) <|> pImmediate
+let private pLabelName =
+    let first = isAsciiLetter >>|| (=) '_'
+    let rest = first >>|| isDigit
+    many1Satisfy2 first rest
+    >>= (fun q -> if isReserved q
+                  then fail "Label cannot be a reserved name"
+                  else preturn q)    
+
+let private pLabel = pStringC "^" >>. pLabelName
+
+let pArgument = (pRegister |>> Reg) <|> pImmediate <|> (pLabel |>> Label)
 
 let private pNoArgInstruction = oneOfMultipleStrings [("nop", Nop)]
 
@@ -126,21 +143,11 @@ let p3ArgInstruction =
     |> List.map (fun t -> pInstr (fst t) (snd t))
     |> choice
 
-let private pLabelName =
-    let first = isAsciiLetter >>|| (=) '_'
-    let rest = first >>|| isDigit
-    many1Satisfy2 first rest
-    >>= (fun q -> if isReserved q
-                  then fail "Label cannot be a reserved name"
-                  else preturn (Label q))    
-
-let private pLabel = pStringC "^" >>. pLabelName
-
 let private pLabelLine = pLabel .>> pStringC ":" |>> LabelLine
 
 let private pInstruction =
     pNoArgInstruction
-    <|> (pOneArgInstr pLabel [("jmp", Jmp)])
+    <|> (pOneArgInstr (pLabel |>> Label) [("jmp", Jmp)])
     <|> p3ArgInstruction
     
 let private pInstructionLine = pInstruction |>> InstructionLine
@@ -170,7 +177,7 @@ let private pByteData = sepBy1 pOneByte (pStringC ",")
 
 let private pDataLine = (pLabel .>> pStringC ":") .>>. pByteData |>> Bytes |> pOneLine
 
-let private pDataCode = (sepBy pDataLine newline) |>> flatMap catOption
+let private pDataCode = (many pDataLine) |>> flatMap catOption
 
 let private pDataSection = (pSectionHeader "data") >>. (pBlock pDataCode)
 
