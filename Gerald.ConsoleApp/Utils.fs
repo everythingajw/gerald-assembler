@@ -16,6 +16,12 @@ let (>>||) (f1: 'a -> bool) (f2: 'a -> bool) (c: 'a): bool = f1 c || f2 c
 
 let prepend elem lst = elem::lst
 
+let hasAtLeastTwoElements lst =
+    match lst with
+    | [_, _] -> true
+    | _::_::_ -> true
+    | _ -> false
+
 let catOption (opt: 'a option) =
     match opt with
     | Some x -> [x]

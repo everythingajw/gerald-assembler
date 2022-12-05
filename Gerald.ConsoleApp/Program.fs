@@ -17,6 +17,8 @@ let asmProgram = stringJoin "\n" [
     "[program] {"
     "add XZR, X12, X23"
     "sub XZR, X1, X2"
+    "^JazzyJeff:"
+    "^FreshPrince:"
     "and XZR, X1, X2"
     "orr XZR, X1, X2"
     "xor XZR, X1, X2"
@@ -29,6 +31,7 @@ let asmProgram = stringJoin "\n" [
     "! comment"
     "!comment1"
     "!adc X"
+    "^BelAir:"
     "jmp ^BelAir ⍝ going to bel air"
     "^WestPhilly:  ⍝ born and raised"
     "JMP ^WestPhilly  ⍝ going to where I was born and raised"
@@ -52,8 +55,17 @@ let main argv =
     match res with
     | Success(p, _, _) ->
         dumpPgm p
-        let dslbls = computeDataSectionLabels p.data.Value
-        printfn $"%A{dslbls}"
+        let dataSectionLabels = computeDataSectionLabels p.data.Value
+        printfn $"dsl: %A{dataSectionLabels}"
+        let pgmSectionLabels = computeProgramSectionLabels p.program.program
+        printfn $"pgml: %A{pgmSectionLabels}"
+        let allLabels = computeLabelAddresses p
+        printfn $"%A{allLabels}"
+        match allLabels with
+        | Ok lbls ->
+            let processed = processProgram p lbls
+            printfn $"processed: %A{processed}"
+        | e -> printfn $"%A{e}"
     | x -> printfn $"%A{x}"
     0
     
