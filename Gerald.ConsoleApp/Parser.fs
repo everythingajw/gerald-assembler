@@ -34,9 +34,12 @@ type Instruction = Nop
                  | And of (Register * Register * Argument)
                  | Orr of (Register * Register * Argument)
                  | Xor of (Register * Register * Argument)
+                 | Lsl of (Register * Register * Argument)
+                 | Lsr of (Register * Register * Argument)
+                 | Asr of (Register * Register * Argument)
                  | Jmp of Argument
-                 
-// type TDirective =
+                 | Jez of Argument
+                 | Jnz of Argument
 
 type AsmLine = LabelLine of string
              | InstructionLine of Instruction
@@ -66,7 +69,7 @@ let private registerNames =
     |> Set.ofList
 
 let private instructionStrings =
-    ["nop"; "add"; "sub"; "and"; "orr"; "xor"; "jmp"]
+    ["nop"; "add"; "sub"; "and"; "orr"; "xor"; "lsl"; "lsr"; "asr"; "jmp"; "jez"; "jnz"]
     |> Set.ofList
 
 let private reservedNames = List.fold Set.union Set.empty [registerNames; instructionStrings]
@@ -131,15 +134,18 @@ let pOneArgInstr conv instrMap =
     |> List.map (fun (s, c) -> (pStringC s) >>. (skipMany1 ws) >>. conv |>> c)
     |> choice
 
+let pRegisterFollowedByComma = pRegister .>> skipMany ws .>> skipChar ',' .>> skipMany ws
+
+let pAliasInstruction =
+    let pRegisterArgumentPair = tuple2 pRegisterFollowedByComma pArgument 
+    pStringC "mov" >>. skipMany1 ws >>. pRegisterArgumentPair >>= (fun p -> preturn <| Add (fst p, ZeroRegister, snd p))
+
 let p3ArgInstruction =
     let pInstr name mapper = 
-        let args =
-            let pReg = pRegister .>> skipMany ws .>> pchar ',' .>> skipMany ws
-            tuple3 pReg pReg pArgument
-        
+        let args = tuple3 pRegisterFollowedByComma pRegisterFollowedByComma pArgument
         pStringC name >>. skipMany1 ws >>. args |>> mapper
     
-    [("add", Add); ("sub", Sub); ("and", And); ("orr", Orr); ("xor", Xor)]
+    [("add", Add); ("sub", Sub); ("and", And); ("orr", Orr); ("xor", Xor); ("lsl", Lsl); ("lsr", Lsr); ("asr", Asr)]
     |> List.map (fun t -> pInstr (fst t) (snd t))
     |> choice
 
@@ -147,7 +153,8 @@ let private pLabelLine = pLabel .>> pStringC ":" |>> LabelLine
 
 let private pInstruction =
     pNoArgInstruction
-    <|> (pOneArgInstr (pLabel |>> Label) [("jmp", Jmp)])
+    <|> (pOneArgInstr (pLabel |>> Label) [("jmp", Jmp); ("jez", Jez); ("jnz", Jnz)])
+    <|> pAliasInstruction
     <|> p3ArgInstruction
     
 let private pInstructionLine = pInstruction |>> InstructionLine

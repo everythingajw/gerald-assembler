@@ -3,6 +3,7 @@ open System.Collections.Generic
 open FParsec.CharParsers
 open Gerald.ConsoleApp.Parser
 open Gerald.ConsoleApp.Assembler
+open Gerald.ConsoleApp.Utils
 
 let stringJoin (sep: string) (lst: IEnumerable<'a>) = String.Join(sep, lst)
 
@@ -15,6 +16,7 @@ let asmProgram = stringJoin "\n" [
     "  !     ^FavFood: DE,AD,BE,EF"
     "\n  } "
     "[program] {"
+    "mov X0, #132"
     "add XZR, X12, X23"
     "sub XZR, X1, X2"
     "^JazzyJeff:"
@@ -65,6 +67,21 @@ let main argv =
         | Ok lbls ->
             let processed = processProgram p lbls
             printfn $"processed: %A{processed}"
+            match processed with
+            | Ok p ->
+                let assembled = assembleProgram p
+                printfn $"assembled: %A{assembled}"
+                match assembled with
+                | Ok a -> 
+                    let paired = 
+                        List.zip p a
+                        |> List.map (fun pair -> (fst pair), (getUint32BitsBigEndian (snd pair)))
+                        |> List.map (fun pair -> (fst pair), stringJoin "" (snd pair))
+                        |> List.map (fun pair -> sprintf $"%A{(fst pair)} | %s{(snd pair)}")
+                        |> stringJoin "\n"
+                    printfn $"%s{paired}"
+                | Error e -> printfn $"%A{e}"
+            | Error e -> printfn $"%A{e}"
         | e -> printfn $"%A{e}"
     | x -> printfn $"%A{x}"
     0

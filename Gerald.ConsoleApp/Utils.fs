@@ -46,3 +46,20 @@ let flatten (lst: 'a list list): 'a list = List.fold (@) [] lst
 
 /// Applies mapper then flattens the list.
 let flatMap mapper = List.map mapper >> flatten 
+
+let setBitU32 n = (|||) (1u <<< n)
+
+let clearBitU32 n = (&&&) ~~~(1u <<< n)
+
+let getUint32BytesBigEndian (u: uint32): (uint8 * uint8 * uint8 * uint8) =
+    (uint8 ((u &&& (0xFFu <<< 24)) >>> 24),
+     uint8 ((u &&& (0xFFu <<< 16)) >>> 16),
+     uint8 ((u &&& (0xFFu <<< 8)) >>> 8),
+     uint8 ((u &&& (0xFFu <<< 0)) >>> 0))
+    
+let getUint32BytesLittleEndian (u: uint32) =
+    let (a, b, c, d) = getUint32BytesBigEndian u
+    (d, c, b, a)
+
+let getUint32BitsBigEndian (u: uint32) = [31..-1..0] |> List.map (fun i -> (u &&& (1u <<< i)) >>> i)
+    

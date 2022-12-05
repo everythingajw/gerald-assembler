@@ -25,7 +25,12 @@ type ProcessedInstruction = Add of (uint8 * uint8 * ProcessedArgument)
                           | And of (uint8 * uint8 * ProcessedArgument)
                           | Orr of (uint8 * uint8 * ProcessedArgument)
                           | Xor of (uint8 * uint8 * ProcessedArgument)
+                          | Lsl of (uint8 * uint8 * ProcessedArgument)
+                          | Lsr of (uint8 * uint8 * ProcessedArgument)
+                          | Asr of (uint8 * uint8 * ProcessedArgument)
                           | Jmp of ProcessedArgument
+                          | Jez of ProcessedArgument
+                          | Jnz of ProcessedArgument
 
 let computeDataSectionLabels (ds: DataSection): CompileResult<LabelAddressMap> =
     let rec aux (sec: DataSection) (prev: RamAddress) (acc: CompileResult<LabelAddressMap>) =
@@ -92,7 +97,7 @@ let processProgram (prog: AsmProgram) (labelAddresses: LabelAddressMap) =
             match Map.tryFind b labelAddresses with
             | Some x -> Ok <| ProcessedArgument.Address x
             | None -> Error <| UndefinedLabel b
-    
+
     let process3Lift (triple: Register * Register * Argument): CompileResult<uint8 * uint8 * ProcessedArgument> =
         let (r1, r2, a) = triple
         match processArgument a with
@@ -109,7 +114,12 @@ let processProgram (prog: AsmProgram) (labelAddresses: LabelAddressMap) =
         | Parser.And args -> Result.map ProcessedInstruction.And (process3Lift args) 
         | Parser.Orr args -> Result.map ProcessedInstruction.Orr (process3Lift args) 
         | Parser.Xor args -> Result.map ProcessedInstruction.Xor (process3Lift args)
+        | Parser.Lsl args -> Result.map ProcessedInstruction.Lsl (process3Lift args)
+        | Parser.Lsr args -> Result.map ProcessedInstruction.Lsr (process3Lift args)
+        | Parser.Asr args -> Result.map ProcessedInstruction.Asr (process3Lift args)
         | Parser.Jmp j -> Result.map ProcessedInstruction.Jmp (processArgument j)
+        | Parser.Jez j -> Result.map ProcessedInstruction.Jez (processArgument j)
+        | Parser.Jnz j -> Result.map ProcessedInstruction.Jnz (processArgument j)
     
     let rec aux (lines: AsmLine list) (acc: CompileResult<ProcessedInstruction list>) =
         match acc with
@@ -119,6 +129,71 @@ let processProgram (prog: AsmProgram) (labelAddresses: LabelAddressMap) =
             | (LabelLine _)::t -> aux t (Ok a)
             | (InstructionLine i)::t ->
                 aux t (Result.map (flip prepend a) (processSingleInstruction i))
+        | Error e -> Error e
+
+    Result.map List.rev <| aux pgm (Ok [])
+
+let getAluOp (instr: ProcessedInstruction): uint32 =
+    match instr with
+    | Add _ -> 0b000u
+    | Sub _ -> 0b001u
+    | And _ -> 0b010u
+    | Orr _ -> 0b011u
+    | Xor _ -> 0b100u
+    | Lsl _ -> 0b101u
+    | Lsr _ -> 0b110u
+    | Asr _ -> 0b111u
+    | x -> failwith $"Invalid ALU operation %A{x}"
+    
+let rec encodeArgument (arg: ProcessedArgument) =
+    match arg with
+    | Address a ->
+        // Addresses are basically immediates
+        // FIXME: if the address is more than 11 bits, the instruction will be destroyed.
+        match a with
+        | Ram r -> setBitU32 21 r
+        | Rom r -> setBitU32 21 r
+    | Immediate i -> setBitU32 21 (uint32 i)  // Immediates need the immediate bit set
+    | Reg r -> (uint32 r) <<< 5 
+
+let encodeInstruction (instr: ProcessedInstruction): CompileResult<uint32> =
+    let encodeAluOp (dest, src, arg) =
+        ((getAluOp instr) <<< 29) ||| ((uint32 dest) <<< 16) ||| ((uint32 src) <<< 11) ||| (encodeArgument arg)
+    
+    let computeJumpAddr addr =
+        let addr' =
+            match addr with
+            | Reg r -> Ok ((uint32 r) <<< 11)
+            | Immediate i -> Ok (setBitU32 21 (uint32 i))
+            | Address a ->
+                match a with
+                | Ram r -> Error (InvalidJumpAddress r)
+                | Rom r -> Ok (setBitU32 21 (uint32 r))
+        
+        // We'll set the jump flag down here so we don't have to do it for every case.
+        Result.map ((|||) (1u <<< 25)) addr'
+    
+    match instr with
+    | Add args
+    | Sub args
+    | And args
+    | Orr args
+    | Xor args
+    | Lsl args
+    | Lsr args
+    | Asr args -> Ok (encodeAluOp args)
+    | Jmp addr -> computeJumpAddr addr
+    | Jez addr -> Result.map (setBitU32 19) (computeJumpAddr addr)
+    | Jnz addr -> Result.map (clearBitU32 19) (computeJumpAddr addr)  // Make sure bit 19 is clear
+
+/// Main assembler.
+let assembleProgram (pgm: ProcessedInstruction list): CompileResult<uint32 list> =
+    let rec aux (pgm: ProcessedInstruction list) (acc: CompileResult<uint32 list>) = 
+        match acc with
+        | Ok a ->
+            match pgm with
+            | [] -> Ok a
+            | h::t -> aux t (Result.map (flip prepend a) (encodeInstruction h))
         | Error e -> Error e
 
     Result.map List.rev <| aux pgm (Ok [])
