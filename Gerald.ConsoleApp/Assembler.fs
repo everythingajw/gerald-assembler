@@ -205,12 +205,12 @@ let encodeInstruction (instr: ProcessedInstruction): CompileResult<uint32> =
     let computeJumpAddr addr =
         let addr' =
             match addr with
-            | Reg r -> Ok (setBitU32 StartBits.readIpFromReg ((uint32 r) <<< StartBits.readRegister1))
-            | Immediate i -> Ok (setBitU32 21 (uint32 i))
+            | Reg r -> Ok (setBitsU32 [StartBits.readIpFromReg] ((uint32 r) <<< StartBits.readRegister1))
+            | Immediate i -> Ok (setBitsU32 [StartBits.haveImmediate] (uint32 i))
             | Address a ->
                 match a with
                 | Ram r -> Error (InvalidJumpAddress r)
-                | Rom r -> Ok (setBitU32 21 (uint32 r))
+                | Rom r -> Ok (setBitU32 StartBits.haveImmediate (uint32 r))
         
         // We'll set the jump flag down here so we don't have to do it for every case.
         Result.map (setBitU32 25) addr'
@@ -244,6 +244,10 @@ let encodeInstruction (instr: ProcessedInstruction): CompileResult<uint32> =
         | Immediate i -> Ok (opcode ||| srcReg' ||| addrReg' ||| (uint32 i))
         // Again, this shouldn't happen since the parser only allows immediates for offsets.
         | _ -> Error OffsetIsNotImmediate
+        
+    // jmp    00000010000 00000 00000 xxxxxxxxxxx
+    // jez    00000010000 11000 00000 xxxxxxxxxxx
+    // jnz    00000010000 10000 00000 xxxxxxxxxxx
     | Jmp addr -> computeJumpAddr addr
     | Jez (reg, arg) -> Result.map (setBitU32 StartBits.jumpIfZero) (computeConditionalJumpAddr reg arg)
     | Jnz (reg, arg) -> Result.map (clearBitU32 StartBits.jumpIfZero) (computeConditionalJumpAddr reg arg)  // Make sure bit 19 is clear
