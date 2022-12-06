@@ -37,9 +37,11 @@ type Instruction = Nop
                  | Lsl of (Register * Register * Argument)
                  | Lsr of (Register * Register * Argument)
                  | Asr of (Register * Register * Argument)
+                 | Ldr of (Register * Register * uint16)
+                 | Sto of (Register * Register * uint16)
+                 | Jez of (Register * Argument)
+                 | Jnz of (Register * Argument)
                  | Jmp of Argument
-                 | Jez of Argument
-                 | Jnz of Argument
 
 type AsmLine = LabelLine of string
              | InstructionLine of Instruction
@@ -54,7 +56,7 @@ type AsmProgram = { data: DataSection option; program: ProgramSection }
 
 let instructionSizeBytes = 4u
 
-let maxImmediate: uint16 = uint16 (1 <<< 14) - 1us
+let maxImmediate: uint16 = uint16 (1 <<< 11) - 1us
 
 let private caseSensitive = false
 
@@ -69,10 +71,12 @@ let private registerNames =
     |> Set.ofList
 
 let private instructionStrings =
-    ["nop"; "add"; "sub"; "and"; "orr"; "xor"; "lsl"; "lsr"; "asr"; "jmp"; "jez"; "jnz"]
+    ["nop"; "add"; "sub"; "and"; "orr"; "xor"; "lsl"; "lsr"; "asr"; "ldr"; "sto"; "jmp"; "jez"; "jnz"]
     |> Set.ofList
 
-let private reservedNames = List.fold Set.union Set.empty [registerNames; instructionStrings]
+let private reservedNames =
+    let otherReserved = ["program"; "data"] |> Set.ofList
+    List.fold Set.union Set.empty [registerNames; instructionStrings; otherReserved]
 
 let private reservedNamesUpper = Set.map toUpper reservedNames
 
@@ -113,7 +117,7 @@ let private pRegister =
 
 let pImmediate = pStringC "#" >>. puint16 >>= (fun n -> if n < 0us || n > maxImmediate
                                                         then fail $"Immediate %d{n} is too large"
-                                                        else Immediate n |> preturn)
+                                                        else preturn n)
 
 let private pLabelName =
     let first = isAsciiLetter >>|| (=) '_'
@@ -125,7 +129,7 @@ let private pLabelName =
 
 let private pLabel = pStringC "^" >>. pLabelName
 
-let pArgument = (pRegister |>> Reg) <|> pImmediate <|> (pLabel |>> Label)
+let pArgument = (pRegister |>> Reg) <|> (pImmediate |>> Immediate) <|> (pLabel |>> Label)
 
 let private pNoArgInstruction = oneOfMultipleStrings [("nop", Nop)]
 
@@ -148,14 +152,35 @@ let p3ArgInstruction =
     [("add", Add); ("sub", Sub); ("and", And); ("orr", Orr); ("xor", Xor); ("lsl", Lsl); ("lsr", Lsr); ("asr", Asr)]
     |> List.map (fun t -> pInstr (fst t) (snd t))
     |> choice
+    
+let pLoadStoreInstruction =
+    [("ldr", Ldr); ("sto", Sto)]
+    |> List.map (fun t -> pStringC (fst t)
+                          >>. skipMany1 ws
+                          >>. tuple2 pRegisterFollowedByComma (skipMany ws >>. pRegister .>> skipMany ws)
+                          .>>. (opt (pStringC "offset" >>. skipMany1 ws >>. pImmediate))
+                          >>= (fun ((r1, r2), off) -> preturn <| (snd t) (r1, r2, Option.defaultValue 0us off)))
+    |> choice
 
 let private pLabelLine = pLabel .>> pStringC ":" |>> LabelLine
 
+let private pUnconditionalJump = pOneArgInstr (pLabel |>> Label) [("jmp", Jmp)]
+
+let private pConditionalJump =
+    [("jez", Jez); ("jnz", Jnz)]
+    |> List.map (fun t -> pStringC (fst t)
+                          >>. skipMany1 ws
+                          >>. tuple2 pRegisterFollowedByComma pArgument
+                          |>> (snd t))
+    |> choice
+
 let private pInstruction =
     pNoArgInstruction
-    <|> (pOneArgInstr (pLabel |>> Label) [("jmp", Jmp); ("jez", Jez); ("jnz", Jnz)])
+    <|> pUnconditionalJump
+    <|> pConditionalJump
     <|> pAliasInstruction
     <|> p3ArgInstruction
+    <|> pLoadStoreInstruction
     
 let private pInstructionLine = pInstruction |>> InstructionLine
 
@@ -180,9 +205,9 @@ let private pOneByte =
     let helper = manyMinMaxSatisfy 1 2 isHex
     skipMany ws >>. helper .>> skipMany ws |>> hexToUint8
 
-let private pByteData = sepBy1 pOneByte (pStringC ",")
+let private pByteData = sepBy1 (pchar '#' >>. puint8) (skipMany ws >>. skipChar ',' >>. skipMany ws)
 
-let private pDataLine = (pLabel .>> pStringC ":") .>>. pByteData |>> Bytes |> pOneLine
+let private pDataLine = (pLabel .>> pStringC ":" .>> skipMany ws) .>>. pByteData |>> Bytes |> pOneLine
 
 let private pDataCode = (many pDataLine) |>> flatMap catOption
 
@@ -190,7 +215,7 @@ let private pDataSection = (pSectionHeader "data") >>. (pBlock pDataCode)
 
 let private pProgramSection = (pSectionHeader "program") >>. (pBlock pSectionCode)
 
-let private pProgram = 
+let pProgram = 
     (opt pDataSection) .>>. pProgramSection .>> (optional eof)
     |>> (fun (d, p) -> { data = d; program = { start = ~~~0us;  program = p } })
 

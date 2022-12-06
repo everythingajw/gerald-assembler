@@ -51,6 +51,10 @@ let setBitU32 n = (|||) (1u <<< n)
 
 let clearBitU32 n = (&&&) ~~~(1u <<< n)
 
+let setBitsU32 (bits: int list) (n: uint32) =
+    let folder (acc: uint32) (curr: int): uint32 = setBitU32 curr acc
+    List.fold folder n bits
+
 let getUint32BytesBigEndian (u: uint32): (uint8 * uint8 * uint8 * uint8) =
     (uint8 ((u &&& (0xFFu <<< 24)) >>> 24),
      uint8 ((u &&& (0xFFu <<< 16)) >>> 16),
@@ -63,3 +67,9 @@ let getUint32BytesLittleEndian (u: uint32) =
 
 let getUint32BitsBigEndian (u: uint32) = [31..-1..0] |> List.map (fun i -> (u &&& (1u <<< i)) >>> i)
     
+let padRight (elem: 'a) (len: int) (lst: 'a list): 'a list =
+    let listLen = List.length lst
+    let toGo = len - listLen
+    if toGo <= 0
+    then lst
+    else lst @ List.init toGo (fun _ -> elem)
