@@ -162,7 +162,7 @@ let main argv =
         else
             let totalTimeWatch = Stopwatch.StartNew()
             let compileTimer = Stopwatch.StartNew()
-            let parseCompileRes = parseAndCompileString asmProgram
+            let parseCompileRes = parseAndCompileFile inFilePath
             compileTimer.Stop()
             
             match parseCompileRes with
