@@ -1,3 +1,6 @@
+// Author: Anthony (AJ) Webster
+// Pledge: I pledge my honor that I have abided by the Stevens Honor System.
+
 module Gerald.ConsoleApp.Parser
 
 open Gerald.ConsoleApp.Utils
