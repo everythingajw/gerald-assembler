@@ -1,7 +1,5 @@
 module Gerald.ConsoleApp.Assembler
 
-open System
-open System.Collections.Generic
 open Gerald.ConsoleApp.Utils
 open Gerald.ConsoleApp.Parser
 open Microsoft.FSharp.Collections
@@ -54,16 +52,15 @@ let computeDataSectionLabels (ds: DataSection): CompileResult<LabelAddressMap> =
               if Map.containsKey lbl labelMap
               then aux t prev (Error (DuplicateLabel lbl))
               else aux t (prev + (uint32 (List.length by))) (Map.add lbl (Ram prev) labelMap |> Ok)
-            | x -> failwith $"Unimplemented data line %A{x}"
+            //| x -> failwith $"Unimplemented data line %A{x}"
         | e -> e
    
     aux ds 0u (Ok Map.empty)
 
 let preprocessProgram (ps: AsmLine list): AsmLine list =
     let stackPointerInit =
-        [InstructionLine <| Parser.Add (StackPointer, ZeroRegister, Parser.Immediate 0b1111111111us);
-         InstructionLine <| Parser.Lsl (StackPointer, StackPointer, Parser.Immediate 5us);
-         InstructionLine <| Parser.Orr (StackPointer, StackPointer, Parser.Immediate 0b11111us)]
+        [InstructionLine <| Parser.Add (StackPointer, ZeroRegister, Parser.Immediate 0b1us);
+         InstructionLine <| Parser.Lsl (StackPointer, StackPointer, Parser.Immediate 0x10us)]
     stackPointerInit @ ps
 
 let computeProgramSectionLabels (ps: AsmLine list): CompileResult<LabelAddressMap> =
@@ -76,11 +73,10 @@ let computeProgramSectionLabels (ps: AsmLine list): CompileResult<LabelAddressMa
                 if Map.containsKey lbl labelMap
                 then aux t prev (Error <| DuplicateLabel lbl)
                 else aux t prev (Ok <| Map.add lbl (Rom prev) labelMap)
-            | _::t -> aux t (prev + instructionSizeBytes) acc
+            | _::t -> aux t (prev + 1u) acc
         | e -> e
 
-    
-    aux ps 0u (Ok Map.empty)
+    aux ps 2u (Ok Map.empty)
 
 let computeLabelAddresses (pgm: AsmProgram): CompileResult<LabelAddressMap> = 
     let dataSectionMap =
@@ -103,7 +99,6 @@ let computeLabelAddresses (pgm: AsmProgram): CompileResult<LabelAddressMap> =
                     
     | (Error e, _)
     | (_, Error e) -> Error e
-    | (Error d, Error p) -> Error d  // We shouldn't get here, but we'll add it to be safe.
 
 let processProgram (prog: AsmProgram) (labelAddresses: LabelAddressMap) =
     let pgm = preprocessProgram prog.program.program
@@ -218,10 +213,11 @@ let encodeInstruction (instr: ProcessedInstruction): CompileResult<uint32> =
                 | Rom r -> Ok (setBitU32 21 (uint32 r))
         
         // We'll set the jump flag down here so we don't have to do it for every case.
-        Result.map ((|||) (1u <<< 25)) addr'
+        Result.map (setBitU32 25) addr'
         
     let computeConditionalJumpAddr (reg: uint8) (addr: ProcessedArgument) =
-        Result.map ((|||) ((uint32 reg) <<< StartBits.readRegister1)) (computeJumpAddr addr) 
+        Result.map ((|||) ((uint32 reg) <<< StartBits.readRegister1)) (computeJumpAddr addr)
+        |> Result.map (setBitU32 StartBits.conditionalJumpFlag)
     
     match instr with
     | Add args
@@ -233,21 +229,19 @@ let encodeInstruction (instr: ProcessedInstruction): CompileResult<uint32> =
     | Lsr args
     | Asr args -> Ok (encodeAluOp args)
     | Ldr (destReg, addrReg, off) ->
-        let opcode = setBitsU32 [StartBits.readFromMemory; StartBits.haveImmediate] 0u
-        let opcode' = opcode <<< StartBits.opcode
+        let opcode = setBitsU32 [StartBits.readFromMemory; StartBits.writeToRegister; StartBits.haveImmediate] 0u
         let destReg' = (uint32 destReg) <<< StartBits.destinationRegister
         let addrReg' = (uint32 addrReg) <<< StartBits.readRegister1
         match off with
-        | Immediate i -> Ok (opcode' ||| destReg' ||| addrReg' ||| (uint32 i))
+        | Immediate i -> Ok (opcode ||| destReg' ||| addrReg' ||| (uint32 i))
         // This shouldn't happen since the parser only allows immediates for offsets.
         | _ -> Error OffsetIsNotImmediate
     | Sto (srcReg, addrReg, off) ->
         let opcode = setBitsU32 [StartBits.writeToMemory; StartBits.haveImmediate] 0u
-        let opcode' = opcode <<< StartBits.opcode
-        let srcReg' = (uint32 srcReg) <<< 16
-        let addrReg' = (uint32 addrReg) <<< 11
+        let srcReg' = (uint32 srcReg) <<< StartBits.destinationRegister
+        let addrReg' = (uint32 addrReg) <<< StartBits.readRegister1
         match off with
-        | Immediate i -> Ok (opcode' ||| srcReg' ||| addrReg' ||| (uint32 i))
+        | Immediate i -> Ok (opcode ||| srcReg' ||| addrReg' ||| (uint32 i))
         // Again, this shouldn't happen since the parser only allows immediates for offsets.
         | _ -> Error OffsetIsNotImmediate
     | Jmp addr -> computeJumpAddr addr
@@ -256,7 +250,6 @@ let encodeInstruction (instr: ProcessedInstruction): CompileResult<uint32> =
     | Jsr arg ->
         Result.map (setBitsU32 [27; 25; 22; 21]) (computeJumpAddr arg)
         |> Result.map ((|||) ((uint32 LinkRegisterNumber) <<< StartBits.destinationRegister))
-    
 
 /// Main assembler.
 let assembleProgram (pgm: ProcessedInstruction list): CompileResult<uint32 list> =
@@ -269,6 +262,6 @@ let assembleProgram (pgm: ProcessedInstruction list): CompileResult<uint32 list>
         | Error e -> Error e
 
     // Add the infinite loop at the end, emulating the CPU halting.
-    let maxAddress = uint32 (List.length pgm) * instructionSizeBytes
+    let maxAddress = uint32 (List.length pgm)
     let pgm' = pgm @ [Jmp (Address (Rom maxAddress))]
     Result.map List.rev <| aux pgm' (Ok [])

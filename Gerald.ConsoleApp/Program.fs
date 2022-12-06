@@ -21,6 +21,7 @@ let asmProgram = stringJoin "\n" [
     "  !     ^FavFood: #0xDE, #0xAD, #0xBE, #0xEF"
     "\n  } "
     "[program] {"
+    "sto X0, SP"
     "mov X0, #132"
     "add XZR, X12, X23"
     "sub XZR, X1, X2"
@@ -99,23 +100,16 @@ let generateRomImage (compiled: uint32 list) =
         then $"%02x{a}%02x{b}%02x{c}%02x{d}"
         else $"%s{Convert.ToString(a, 2).PadRight(8, '0')}%s{Convert.ToString(b, 2).PadRight(8, '0')}%s{Convert.ToString(c, 2).PadRight(8, '0')}%s{Convert.ToString(d, 2).PadRight(8, '0')}"
     
-    let zero4Bytes = String.init 8 (fun _ -> "0")
-    
     compiled
     |> List.map opcodeToString
-    |> padRight zero4Bytes 0x10000
-    |> List.chunkBySize 8
-    |> List.mapi (fun i c -> sprintf "%04x: %s" (i * 8) (stringJoin " " c))
+    |> List.mapi (fun i c -> $"%04x{i}: %s{c}")
     |> prepend imageHeader
     |> stringJoin "\n"
 
 let generateRamImage (ds: DataSection option) =
     Option.defaultValue [] ds
     |> flatMap (function | Bytes b -> snd b)
-    |> padRight 0uy (0x20000 - 16)
-    |> List.map (fun b -> $"%02x{b}")
-    |> List.chunkBySize 16
-    |> List.mapi (fun i c -> sprintf "%04x: %s" (i * 8) (stringJoin " " c))
+    |> List.mapi (fun i b -> $"%04x{i}: %02x{b}")
     |> prepend imageHeader
     |> stringJoin "\n"
     
