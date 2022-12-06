@@ -174,7 +174,7 @@ module private StartBits =
     let jumpIfZero = 19
     let destinationRegister = 16
     let readRegister1 = 11
-    let readRegister2 = 5
+    let readRegister2 = 6
     let immediate = 0
     
 let rec encodeArgument (arg: ProcessedArgument) =
