@@ -20,9 +20,6 @@
         <Compile Include="Parser.fs" />
         <Compile Include="Assembler.fs" />
         <Compile Include="Program.fs" />
-        <Content Include="..\Makefile">
-          <Link>Makefile</Link>
-        </Content>
     </ItemGroup>
 
     <ItemGroup>
