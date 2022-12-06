@@ -42,6 +42,7 @@ type ProcessedInstruction = Add of (uint8 * uint8 * ProcessedArgument)
                           | Jmp of ProcessedArgument
                           | Jez of (uint8 * ProcessedArgument)
                           | Jnz of (uint8 * ProcessedArgument)
+                          | Jsr of ProcessedArgument
 
 let computeDataSectionLabels (ds: DataSection): CompileResult<LabelAddressMap> =
     let rec aux (sec: DataSection) (prev: RamAddress) (acc: CompileResult<LabelAddressMap>) =
@@ -130,7 +131,7 @@ let processProgram (prog: AsmProgram) (labelAddresses: LabelAddressMap) =
             | (Register.X a, Register.X b) -> Ok (a, b, x)
         | Error e -> Error e
     
-    let processSingleInstruction instr =
+    let rec processSingleInstruction instr =
         match instr with
         | Parser.Nop -> Ok <| ProcessedInstruction.Add (ZeroRegisterNumber, ZeroRegisterNumber, Reg ZeroRegisterNumber)
         | Parser.Add args -> Result.map ProcessedInstruction.Add (process3Lift args) 
@@ -146,6 +147,7 @@ let processProgram (prog: AsmProgram) (labelAddresses: LabelAddressMap) =
         | Parser.Jmp j -> Result.map ProcessedInstruction.Jmp (processArgument j)
         | Parser.Jez j -> Result.map ProcessedInstruction.Jez (process2Lift j)
         | Parser.Jnz j -> Result.map ProcessedInstruction.Jnz (process2Lift j)
+        | Parser.Jsr j -> Result.map ProcessedInstruction.Jsr (processArgument j)
     
     let rec aux (lines: AsmLine list) (acc: CompileResult<ProcessedInstruction list>) =
         match acc with
@@ -208,7 +210,7 @@ let encodeInstruction (instr: ProcessedInstruction): CompileResult<uint32> =
     let computeJumpAddr addr =
         let addr' =
             match addr with
-            | Reg r -> Ok ((uint32 r) <<< 11)
+            | Reg r -> Ok (setBitU32 StartBits.readIpFromReg ((uint32 r) <<< StartBits.readRegister1))
             | Immediate i -> Ok (setBitU32 21 (uint32 i))
             | Address a ->
                 match a with
@@ -251,6 +253,10 @@ let encodeInstruction (instr: ProcessedInstruction): CompileResult<uint32> =
     | Jmp addr -> computeJumpAddr addr
     | Jez (reg, arg) -> Result.map (setBitU32 StartBits.jumpIfZero) (computeConditionalJumpAddr reg arg)
     | Jnz (reg, arg) -> Result.map (clearBitU32 StartBits.jumpIfZero) (computeConditionalJumpAddr reg arg)  // Make sure bit 19 is clear
+    | Jsr arg ->
+        Result.map (setBitsU32 [27; 25; 22; 21]) (computeJumpAddr arg)
+        |> Result.map ((|||) ((uint32 LinkRegisterNumber) <<< StartBits.destinationRegister))
+    
 
 /// Main assembler.
 let assembleProgram (pgm: ProcessedInstruction list): CompileResult<uint32 list> =

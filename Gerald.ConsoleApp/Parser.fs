@@ -41,6 +41,7 @@ type Instruction = Nop
                  | Sto of (Register * Register * uint16)
                  | Jez of (Register * Argument)
                  | Jnz of (Register * Argument)
+                 | Jsr of Argument
                  | Jmp of Argument
 
 type AsmLine = LabelLine of string
@@ -71,7 +72,7 @@ let private registerNames =
     |> Set.ofList
 
 let private instructionStrings =
-    ["nop"; "add"; "sub"; "and"; "orr"; "xor"; "lsl"; "lsr"; "asr"; "ldr"; "sto"; "jmp"; "jez"; "jnz"]
+    ["nop"; "add"; "sub"; "and"; "orr"; "xor"; "lsl"; "lsr"; "asr"; "ldr"; "sto"; "jmp"; "jez"; "jnz"; "jsr"; "rts"]
     |> Set.ofList
 
 let private reservedNames =
@@ -174,10 +175,25 @@ let private pConditionalJump =
                           |>> (snd t))
     |> choice
 
+let private pSubroutineJump =
+    let pJsr = pStringC "jsr" >>. skipMany1 ws >>. pArgument |>> Jsr
+        
+    let pRts =
+       pStringC "rts"
+       >>. skipMany1 ws
+       >>. (opt pArgument)
+       >>= (function
+            | Some a -> preturn a
+            | None -> preturn (Reg LinkRegister))
+       |>> Jmp
+
+    pJsr <|> pRts
+    
 let private pInstruction =
     pNoArgInstruction
     <|> pUnconditionalJump
     <|> pConditionalJump
+    <|> pSubroutineJump
     <|> pAliasInstruction
     <|> p3ArgInstruction
     <|> pLoadStoreInstruction
