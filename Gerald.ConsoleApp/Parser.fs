@@ -91,7 +91,7 @@ let private commentChars =
     // Sort by descending to guarantee we get multi-char comment chars.
     // Yes, we can do this by hand, but I'd rather guarantee it with
     // a cheap one-time cost.
-    ["⍝"; "!"] |> List.sortByDescending String.length
+    ["ඞ"; "⍝"; "!"] |> List.sortByDescending String.length
 
 let private pCommentChar = List.map pStringC commentChars |> choice
 
